@@ -7,6 +7,7 @@
 
 <script>
 import NoiseMap from 'noise-map';
+import { QuadTree, isoLines } from 'marchingsquares';
 
 export default {
   name: 'WebEngine',
@@ -39,7 +40,7 @@ export default {
     // DOM. Once we have it, provide it to all child components.
     this.provider.context = this.$refs.webEngineCanvas.getContext('2d');
 
-    this.generator = new NoiseMap.MapGenerator();
+    this.generator = new NoiseMap.MapGenerator(1);
     this.noiseMap = this.generator.createMap(400, 200, {
       type: 'simplex',
       amplitude: 1,
@@ -60,6 +61,49 @@ export default {
       this.$refs.webEngineCanvas.height,
       NoiseMap.STYLE.GRAY,
     );
+    const data = [];
+
+    for (let y = 0; y < this.noiseMap.height; y += 1) {
+      const row = [];
+      for (let x = 0; x < this.noiseMap.width; x += 1) {
+        row.push(this.noiseMap.get(x, y) * 255);
+      }
+      data.push(row);
+    }
+
+    const prepData = new QuadTree(data);
+    const contours = isoLines(prepData, [64, 96, 128, 160, 192, 240], {
+      // successCallback: () => {},
+      verbose: true,
+      // polygons: true,
+      // linearRing: true,
+      // noQuadTree: false,
+      // noFrame: false,
+    });
+
+
+    contours.forEach((contour, ccount) => {
+      contour.forEach((path, pcount) => {
+        this.provider.context.beginPath();
+        path.forEach((vertex, index) => {
+          // this.provider.context.ellipse(vertex[0], vertex[1], 1, 1, Math.PI / 4, 0, 2 * Math.PI);
+          const nextVertex = path[index + 1];
+          this.provider.context.moveTo(vertex[0], vertex[1]);
+          if (nextVertex) {
+            this.provider.context.lineTo(nextVertex[0], nextVertex[1]);
+          }
+        });
+        const b = ccount * 16;
+        const g = b + ccount * 24;
+        const r = g + ccount * 32;
+        this.provider.context.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+        // this.provider.context.fill();
+        this.provider.context.stroke();
+      });
+    });
+
+
+    // console.log(contours);
 
     // Resize the canvas to fit its parent's width.
     // Normally you'd use a more flexible resize system.
@@ -72,26 +116,7 @@ export default {
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped lang="scss">
 canvas {
-  background-color: #000000;
-  height: 512px;
-  width: 512px;
-}
-
-h3 {
-  margin: 40px 0 0;
-}
-
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-
-li {
-  display: inline-block;
-  margin: 0 10px;
-}
-
-a {
-  color: #42b983;
+  height: 100%;
+  width: 100%;
 }
 </style>

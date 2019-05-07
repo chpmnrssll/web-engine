@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "core-js": "^2.6.5",
+    "marchingsquares": "^1.3.3",
     "noise-map": "^1.1.0",
     "vue": "^2.6.10",
     "vuex": "^3.0.1"
