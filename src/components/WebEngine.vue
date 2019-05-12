@@ -6,8 +6,11 @@
 </template>
 
 <script>
+import * as THREE from 'three';
 import NoiseMap from 'noise-map';
 import { QuadTree, isoLines } from 'marchingsquares';
+// import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { MapControls } from 'three/examples/jsm/controls/MapControls';
 
 export default {
   name: 'WebEngine',
@@ -38,7 +41,7 @@ export default {
     // const [webEngineCanvas] = this.$refs;
     // We can't access the rendering context until the canvas is mounted to the
     // DOM. Once we have it, provide it to all child components.
-    this.provider.context = this.$refs.webEngineCanvas.getContext('2d');
+    // this.provider.context = this.$refs.webEngineCanvas.getContext('2d');
 
     this.generator = new NoiseMap.MapGenerator(1);
     this.noiseMap = this.generator.createMap(400, 200, {
@@ -55,12 +58,12 @@ export default {
     // this.noiseMap.stepValues(30);
 
     // draw the heights in B&W
-    this.noiseMap.draw(
-      this.provider.context,
-      this.$refs.webEngineCanvas.width,
-      this.$refs.webEngineCanvas.height,
-      NoiseMap.STYLE.GRAY,
-    );
+    // this.noiseMap.draw(
+    //   this.provider.context,
+    //   this.$refs.webEngineCanvas.width,
+    //   this.$refs.webEngineCanvas.height,
+    //   NoiseMap.STYLE.GRAY,
+    // );
     const data = [];
 
     for (let y = 0; y < this.noiseMap.height; y += 1) {
@@ -72,7 +75,7 @@ export default {
     }
 
     const prepData = new QuadTree(data);
-    const contours = isoLines(prepData, [64, 96, 128, 160, 192, 240], {
+    const contours = isoLines(prepData, [64, 128, 192], {
       // successCallback: () => {},
       verbose: true,
       // polygons: true,
@@ -81,29 +84,65 @@ export default {
       // noFrame: false,
     });
 
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(
+      75, window.innerWidth / window.innerHeight, 0.1, 1000,
+    );
 
-    contours.forEach((contour, ccount) => {
-      contour.forEach((path, pcount) => {
-        this.provider.context.beginPath();
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.$refs.webEngineCanvas });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    contours.forEach((contour) => {
+      contour.forEach((path, pI) => {
+        const path3D = new THREE.Shape();
         path.forEach((vertex, index) => {
-          // this.provider.context.ellipse(vertex[0], vertex[1], 1, 1, Math.PI / 4, 0, 2 * Math.PI);
           const nextVertex = path[index + 1];
-          this.provider.context.moveTo(vertex[0], vertex[1]);
+          path3D.moveTo(vertex[0], vertex[1]);
           if (nextVertex) {
-            this.provider.context.lineTo(nextVertex[0], nextVertex[1]);
+            path3D.lineTo(nextVertex[0], nextVertex[1]);
           }
         });
-        const b = ccount * 16;
-        const g = b + ccount * 24;
-        const r = g + ccount * 32;
-        this.provider.context.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-        // this.provider.context.fill();
-        this.provider.context.stroke();
+
+        const extrudeSettings = {
+          amount: 8,
+          bevelEnabled: true,
+          bevelSegments: 2,
+          steps: 2,
+          bevelSize: 2,
+          bevelThickness: 2,
+        };
+        const geometry = new THREE.ExtrudeGeometry(path3D, extrudeSettings);
+        geometry.translate(0, 0, pI * 4);
+
+        const r = pI * 4;
+        const g = pI * 8;
+        const b = pI * 16;
+        const material = new THREE.MeshPhongMaterial({ color: `rgb(${r},${g},${b})` });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(mesh);
       });
     });
 
+    this.camera.position.set(200, 100, 400);
 
-    // console.log(contours);
+    // this.controls = new OrbitControls(this.camera);
+    this.controls = new MapControls(this.camera);
+
+    this.scene.add(new THREE.AmbientLight(0x444444));
+    this.light = new THREE.PointLight(0xffffff);
+    this.light.position.copy(this.camera.position);
+    this.scene.add(this.light);
+
+    const animate = () => {
+      this.controls.update();
+      this.light.position.copy(this.camera.position);
+      this.renderer.render(this.scene, this.camera);
+      window.requestAnimationFrame(animate);
+    };
+
+    this.controls.update();
+    animate();
 
     // Resize the canvas to fit its parent's width.
     // Normally you'd use a more flexible resize system.
