@@ -1,7 +1,8 @@
 
 <template>
   <div class="webEngineContainer">
-    <canvas ref="webEngineCanvas" />
+    <canvas ref="canvas3D" />
+    <!-- <canvas ref="canvas2D" /> -->
   </div>
 </template>
 
@@ -14,36 +15,15 @@ import { MapControls } from 'three/examples/jsm/controls/MapControls';
 
 export default {
   name: 'WebEngine',
-  props: {
-    img: {
-      type: String,
-      default: '',
-    },
-  },
-  data() {
-    return {
-      // By creating the provider in the data property, it becomes reactive,
-      // so child components will update when `context` changes.
-      provider: {
-        // This is the CanvasRenderingContext that children will draw to.
-        context: null,
-      },
-    };
-  },
-  provide() {
-    // Allows any child component to `inject: ['provider']` and have access to it.
-    return {
-      provider: this.provider,
-    };
-  },
   mounted() {
-    // const webEngineCanvas = this.$refs.webEngineCanvas;
-    // const [webEngineCanvas] = this.$refs;
-    // We can't access the rendering context until the canvas is mounted to the
-    // DOM. Once we have it, provide it to all child components.
-    // this.provider.context = this.$refs.webEngineCanvas.getContext('2d');
+    // this.canvas2D = this.$refs.canvas2D;
+    // this.context2D = this.canvas2D.getContext('2d');
 
-    this.generator = new NoiseMap.MapGenerator(1);
+    this.canvas3D = this.$refs.canvas3D;
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas3D });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    this.generator = new NoiseMap.MapGenerator();
     this.noiseMap = this.generator.createMap(400, 200, {
       type: 'simplex',
       amplitude: 1,
@@ -59,9 +39,9 @@ export default {
 
     // draw the heights in B&W
     // this.noiseMap.draw(
-    //   this.provider.context,
-    //   this.$refs.webEngineCanvas.width,
-    //   this.$refs.webEngineCanvas.height,
+    //   this.context2D,
+    //   this.canvas2D.width,
+    //   this.canvas2D.height,
     //   NoiseMap.STYLE.GRAY,
     // );
     const data = [];
@@ -75,9 +55,9 @@ export default {
     }
 
     const prepData = new QuadTree(data);
-    const contours = isoLines(prepData, [64, 128, 192], {
+    const contours = isoLines(prepData, [160, 128, 96, 64], {
       // successCallback: () => {},
-      verbose: true,
+      // verbose: true,
       // polygons: true,
       // linearRing: true,
       // noQuadTree: false,
@@ -89,65 +69,69 @@ export default {
       75, window.innerWidth / window.innerHeight, 0.1, 1000,
     );
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.$refs.webEngineCanvas });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    contours.forEach((contour, contourNumber) => {
+      const r = parseInt(64 - (contourNumber * 8), 10);
+      const g = parseInt(128 + (contourNumber * 8), 10);
+      const b = parseInt(192 - (contourNumber * 8), 10);
+      contour.forEach((path) => {
+        const pathShape = new THREE.Shape();
 
-    contours.forEach((contour) => {
-      contour.forEach((path, pI) => {
-        const path3D = new THREE.Shape();
+        // this.context2D.save();
+        // this.context2D.beginPath();
+        // this.context2D.strokeStyle = `rgb(${r},${g},${b})`;
         path.forEach((vertex, index) => {
+          pathShape.moveTo(vertex[0], vertex[1]);
+          // this.context2D.moveTo(vertex[0], vertex[1]);
           const nextVertex = path[index + 1];
-          path3D.moveTo(vertex[0], vertex[1]);
           if (nextVertex) {
-            path3D.lineTo(nextVertex[0], nextVertex[1]);
+            pathShape.lineTo(nextVertex[0], nextVertex[1]);
+            // this.context2D.lineTo(nextVertex[0], nextVertex[1]);
           }
         });
+        // this.context2D.stroke();
+        // this.context2D.restore();
 
-        const extrudeSettings = {
-          amount: 8,
+        const depth = 5;
+        const geometry = new THREE.ExtrudeGeometry(pathShape, {
+          depth,
           bevelEnabled: true,
           bevelSegments: 2,
-          steps: 2,
           bevelSize: 2,
-          bevelThickness: 2,
-        };
-        const geometry = new THREE.ExtrudeGeometry(path3D, extrudeSettings);
-        geometry.translate(0, 0, pI * 4);
+          bevelThickness: 1,
+          steps: 2,
+        });
 
-        const r = pI * 4;
-        const g = pI * 8;
-        const b = pI * 16;
+        geometry.translate(-200, -100, contourNumber * depth);
+
         const material = new THREE.MeshPhongMaterial({ color: `rgb(${r},${g},${b})` });
-
         const mesh = new THREE.Mesh(geometry, material);
         this.scene.add(mesh);
       });
     });
 
-    this.camera.position.set(200, 100, 400);
+    this.camera.position.set(0, 0, 200);
 
     // this.controls = new OrbitControls(this.camera);
     this.controls = new MapControls(this.camera);
 
-    this.scene.add(new THREE.AmbientLight(0x444444));
-    this.light = new THREE.PointLight(0xffffff);
-    this.light.position.copy(this.camera.position);
-    this.scene.add(this.light);
+    this.scene.add(new THREE.AmbientLight(0x0a0a0a));
+
+    const topLight = new THREE.PointLight(0xffeedd);
+    topLight.position.set(0, 100, 20);
+    this.scene.add(topLight);
+
+    const bottomLight = new THREE.PointLight(0xff2200);
+    bottomLight.position.set(0, -100, 10);
+    this.scene.add(bottomLight);
 
     const animate = () => {
       this.controls.update();
-      this.light.position.copy(this.camera.position);
       this.renderer.render(this.scene, this.camera);
       window.requestAnimationFrame(animate);
     };
 
     this.controls.update();
     animate();
-
-    // Resize the canvas to fit its parent's width.
-    // Normally you'd use a more flexible resize system.
-    // this.$refs.webEngineCanvas.width = this.$refs.webEngineCanvas.parentElement.clientWidth;
-    // this.$refs.webEngineCanvas.height = this.$refs.webEngineCanvas.parentElement.clientHeight;
   },
 };
 </script>
@@ -155,7 +139,7 @@ export default {
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped lang="scss">
 canvas {
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: 100vw;
 }
 </style>
